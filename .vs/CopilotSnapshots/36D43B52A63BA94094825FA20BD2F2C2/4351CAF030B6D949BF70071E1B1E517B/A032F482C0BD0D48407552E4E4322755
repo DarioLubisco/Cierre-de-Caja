@@ -1,0 +1,210 @@
+﻿"""
+Definition of views.
+"""
+
+from datetime import datetime, date
+from decimal import Decimal
+from django.shortcuts import render, redirect
+from django.http import HttpRequest, HttpResponse
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.conf import settings
+from .models import CajaCierre
+
+# Optional import; app should still load if pyodbc not installed
+try:
+    import pyodbc
+except Exception:  # pragma: no cover
+    pyodbc = None
+
+
+def home(request):
+    """Simple landing page redirecting to conciliation when logged in."""
+    if request.user.is_authenticated:
+        return redirect('conciliation')
+    return redirect('login')
+
+
+@login_required
+def conciliation_view(request: HttpRequest):
+    """
+    Main conciliation screen:
+    - Loads active vendors from SAVEND
+    - On POST, runs the RESUMEN SQL with selected CodVend and date range
+    - Shows system totals and allows manual input via UI
+    """
+    assert isinstance(request, HttpRequest)
+
+    saint_cfg = getattr(settings, 'SAINT_DB', {})
+    vendors = []
+    system_totals = None
+
+    # Build connection string
+    conn = None
+    if pyodbc:
+        try:
+            if saint_cfg.get('DSN'):
+                conn_str = f"DSN={saint_cfg['DSN']};"\
+                           f"UID={saint_cfg.get('USER','')};PWD={saint_cfg.get('PASSWORD','')};"
+            else:
+                parts = []
+                if saint_cfg.get('DRIVER'):
+                    parts.append(f"DRIVER={saint_cfg['DRIVER']}")
+                if saint_cfg.get('SERVER'):
+                    parts.append(f"SERVER={saint_cfg['SERVER']}")
+                if saint_cfg.get('DATABASE'):
+                    parts.append(f"DATABASE={saint_cfg['DATABASE']}")
+                if saint_cfg.get('USER'):
+                    parts.append(f"UID={saint_cfg['USER']}")
+                if saint_cfg.get('PASSWORD'):
+                    parts.append(f"PWD={saint_cfg['PASSWORD']}")
+                if saint_cfg.get('TRUSTED_CONNECTION'):
+                    parts.append(f"Trusted_Connection={saint_cfg['TRUSTED_CONNECTION']}")
+                conn_str = ';'.join(parts)
+            if conn_str:
+                conn = pyodbc.connect(conn_str, timeout=saint_cfg.get('TIMEOUT', 30))
+                conn.autocommit = True
+        except Exception as ex:  # pragma: no cover
+            messages.error(request, f"No se pudo conectar a la base de datos SAINT: {ex}")
+            conn = None
+    else:
+        messages.warning(request, 'pyodbc no está instalado. No se pueden consultar los totales del sistema.')
+
+    # Load vendors
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT CodVend, Descrip
+                    FROM EnterpriseAdmin_AMC.dbo.SAVEND WITH (NOLOCK)
+                    WHERE Activo = 1
+                    ORDER BY Descrip
+                """)
+                vendors = [{'CodVend': r[0], 'Descrip': r[1]} for r in cur.fetchall()]
+        except Exception as ex:  # pragma: no cover
+            messages.error(request, f"Error consultando vendedores: {ex}")
+
+    selected_vendor = request.POST.get('CodVend') if request.method == 'POST' else ''
+    fecha_ini = request.POST.get('FechaIni') if request.method == 'POST' else ''
+    fecha_fin = request.POST.get('FechaFin') if request.method == 'POST' else ''
+
+    # Run main SQL when form submitted
+    if request.method == 'POST' and conn and selected_vendor and fecha_ini and fecha_fin:
+        try:
+            # Map named parameters from rtm to T-SQL with placeholders
+            # Use strong filtering as per original SQL; set optional filters to '' to match wildcard
+            params = {
+                'FECHAINI': fecha_ini,
+                'FECHAFIN': fecha_fin,
+                'CODESTA': '',
+                'CODZONA': '',
+                'CODVEND': selected_vendor,
+                'CODCLIE': '',
+                'CODOPER': '',
+                'CODUSUA': '',
+                'CODUBIC': '',
+            }
+
+            sql = """
+            SELECT R.CODSUCU,
+                   SUM(R.TOTEFECTIVO) AS TOTEFECTIVO,
+                   SUM(R.TOTGIROS) AS TOTGIROS,
+                   SUM(R.TOTCHEQUE) AS TOTCHEQUE,
+                   SUM(R.TOTTARJETA) AS TOTTARJETA,
+                   SUM(R.TOTADELANTOS) AS TOTADELANTOS,
+                   SUM(R.TOTRETIMP) AS TOTRETIMP
+            FROM (
+                SELECT F.CODSUCU, F.CODESTA, CONVERT(VARCHAR,F.FECHAT,112) AS FECHAT,
+                       SUM(F.CancelE) AS TOTEFECTIVO,
+                       SUM(F.CancelG) AS TOTGIROS,
+                       SUM(F.CancelC) AS TOTCHEQUE,
+                       SUM(F.CancelT) AS TOTTARJETA,
+                       SUM(F.CancelA) AS TOTADELANTOS,
+                       SUM(F.CancelI) AS TOTRETIMP
+                FROM [dbo].VW_ADM_FACTURAS AS F WITH (NOLOCK)
+                     INNER JOIN SACLIE CL ON (CL.CODCLIE=F.CODCLIE)
+                                         AND (SUBSTRING(ISNULL(CL.CODZONA,''),1,LEN(?+''))=?+'')
+                WHERE (F.FECHAE>=?) AND (F.FECHAE<=?)
+                  AND (SUBSTRING(ISNULL(F.CODESTA,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(F.CODVEND,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(F.CODCLIE,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(F.CODOPER,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(F.CODUSUA,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(F.CODUBIC,''),1,LEN(?+''))=?+'')
+                GROUP BY F.CODSUCU, F.CODESTA, CONVERT(VARCHAR,F.FECHAT,112)
+                UNION ALL
+                SELECT C.CODSUCU, C.CODESTA, CONVERT(VARCHAR,C.FECHAT,112) AS FECHAT,
+                       0 AS TOTEFECTIVO,
+                       SUM(CASE WHEN C.TIPOCXC='50' THEN 0 WHEN C.TIPOCXC='25' THEN 0 ELSE C.CANCELG END) AS TOTGIROS,
+                       SUM(CASE WHEN C.TIPOCXC='50' THEN 0 WHEN C.TIPOCXC='25' THEN 0 ELSE C.CANCELC END) AS TOTCHEQUE,
+                       SUM(CASE WHEN C.TIPOCXC='50' THEN 0 WHEN C.TIPOCXC='25' THEN 0 ELSE C.CANCELT END) AS TOTTARJETA,
+                       SUM(CASE WHEN C.TIPOCXC='50' THEN 0 WHEN C.TIPOCXC='25' THEN 0 ELSE C.CANCELA END) AS TOTADELANTOS,
+                       SUM(CASE WHEN C.TIPOCXC='50' THEN 0 WHEN C.TIPOCXC='25' THEN 0 ELSE C.CANCELI END) AS TOTRETIMP
+                FROM [dbo].[SAACXC] AS C WITH (NOLOCK)
+                     INNER JOIN SACLIE CL ON (CL.CODCLIE=C.CODCLie)
+                                         AND (SUBSTRING(ISNULL(CL.CODZONA,''),1,LEN(?+''))=?+'')
+                WHERE ((SUBSTRING(C.TIPOCXC,1,1) IN ('3','4','5')) OR (C.TIPOCXC='25'))
+                  AND (C.FROMTRAN=1)
+                  AND (C.FECHAE>=?) AND (C.FECHAE<=?)
+                  AND (SUBSTRING(ISNULL(C.CODESTA,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(C.CODVEND,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(C.CODCLIE,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(C.CODOPER,''),1,LEN(?+''))=?+'')
+                  AND (SUBSTRING(ISNULL(C.CODUSUA,''),1,LEN(?+''))=?+'')
+                GROUP BY C.CODSUCU, C.CODESTA, CONVERT(VARCHAR,C.FECHAT,112)
+            ) R
+            GROUP BY R.CODSUCU
+            """
+
+            args = [
+                params['CODZONA'], params['CODZONA'],
+                params['FECHAINI'], params['FECHAFIN'],
+                params['CODESTA'], params['CODESTA'],
+                params['CODVEND'], params['CODVEND'],
+                params['CODCLIE'], params['CODCLIE'],
+                params['CODOPER'], params['CODOPER'],
+                params['CODUSUA'], params['CODUSUA'],
+                params['CODUBIC'], params['CODUBIC'],
+                params['CODZONA'], params['CODZONA'],
+                params['FECHAINI'], params['FECHAFIN'],
+                params['CODESTA'], params['CODESTA'],
+                params['CODVEND'], params['CODVEND'],
+                params['CODCLIE'], params['CODCLIE'],
+                params['CODOPER'], params['CODOPER'],
+                params['CODUSUA'], params['CODUSUA'],
+            ]
+
+            with conn.cursor() as cur:
+                cur.execute(sql, args)
+                row = cur.fetchone()
+                if row:
+                    system_totals = {
+                        'TOTEFECTIVO': Decimal(row.TOTEFECTIVO) if hasattr(row, 'TOTEFECTIVO') else Decimal(row[1] or 0),
+                        'TOTCHEQUE': Decimal(row.TOTCHEQUE) if hasattr(row, 'TOTCHEQUE') else Decimal(row[3] or 0),
+                        'TOTTARJETA': Decimal(row.TOTTARJETA) if hasattr(row, 'TOTTARJETA') else Decimal(row[4] or 0),
+                        'TOTGIROS': Decimal(row.TOTGIROS) if hasattr(row, 'TOTGIROS') else Decimal(row[2] or 0),
+                        'TOTADELANTOS': Decimal(row.TOTADELANTOS) if hasattr(row, 'TOTADELANTOS') else Decimal(row[5] or 0),
+                        'TOTRETIMP': Decimal(row.TOTRETIMP) if hasattr(row, 'TOTRETIMP') else Decimal(row[6] or 0),
+                    }
+                else:
+                    system_totals = {
+                        'TOTEFECTIVO': Decimal(0),
+                        'TOTCHEQUE': Decimal(0),
+                        'TOTTARJETA': Decimal(0),
+                        'TOTGIROS': Decimal(0),
+                        'TOTADELANTOS': Decimal(0),
+                        'TOTRETIMP': Decimal(0),
+                    }
+        except Exception as ex:  # pragma: no cover
+            messages.error(request, f"Error ejecutando consulta de resumen: {ex}")
+
+    context = {
+        'title': 'Conciliación de Caja',
+        'vendors': vendors,
+        'selected_vendor': selected_vendor,
+        'fecha_ini': fecha_ini,
+        'fecha_fin': fecha_fin,
+        'system_totals': system_totals,
+        'is_admin': request.user.is_superuser or request.user.is_staff,
+    }
+    return render(request, 'app/conciliation.html', context)

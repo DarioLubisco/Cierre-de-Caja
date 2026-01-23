@@ -1,0 +1,99 @@
+﻿"""
+Definition of models.
+ASCII only comments.
+"""
+
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class CajaCierre(models.Model):
+    vendedor_codigo = models.CharField(max_length=10)
+    vendedor_nombre = models.CharField(max_length=120, blank=True)
+    fecha_ini = models.DateField()
+    fecha_fin = models.DateField()
+
+    # System totals (reference)
+    totefectivo = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    totcheque = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    tottarjeta = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    totgiros = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    totadelantos = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    totretimp = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    # Manual totals (user input)
+    manual_efectivo_bs = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_divisas = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_euros = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_cheques = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_tdd = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_tdc = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_biopago = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_pago_movil = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    manual_giros = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+
+    creado_por = models.ForeignKey(User, on_delete=models.PROTECT)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+        db_table = 'Custom.CajaCierre'
+        managed = True  # Temporarily True for SQLite testing
+
+    def __str__(self):
+        return f"Cierre {self.vendedor_codigo} {self.fecha_ini} - {self.fecha_fin}"
+
+
+class CajaCierreEfectivo(models.Model):
+    cierre = models.ForeignKey(CajaCierre, related_name='efectivo_detalle', on_delete=models.CASCADE)
+    denominacion = models.PositiveIntegerField(help_text='Denominacion del billete en Bs')
+    cantidad = models.PositiveIntegerField(default=0)
+    total = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        indexes = [models.Index(fields=['cierre'])]
+        db_table = 'Custom.CajaCierreEfectivo'
+        managed = False
+
+
+class CajaCierreDivisa(models.Model):
+    cierre = models.ForeignKey(CajaCierre, related_name='divisas_detalle', on_delete=models.CASCADE)
+    moneda = models.CharField(max_length=3, choices=(('USD','USD'),('EUR','EUR')))
+    denominacion = models.PositiveIntegerField(null=True, blank=True, help_text='Denominacion billete USD null para EUR')
+    cantidad = models.PositiveIntegerField(default=0)
+    total = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        indexes = [models.Index(fields=['cierre'])]
+        db_table = 'Custom.CajaCierreDivisa'
+        managed = False
+
+
+class CajaCierreCheque(models.Model):
+    cierre = models.ForeignKey(CajaCierre, related_name='cheques_detalle', on_delete=models.CASCADE)
+    banco = models.CharField(max_length=60)
+    referencia = models.CharField(max_length=60)
+    monto = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        indexes = [models.Index(fields=['cierre'])]
+        constraints = [
+            models.UniqueConstraint(fields=['cierre', 'referencia'], name='uq_cheque_cierre_referencia'),
+        ]
+        db_table = 'Custom.CajaCierreCheque'
+        managed = False
+
+
+class CajaCierreTarjeta(models.Model):
+    cierre = models.ForeignKey(CajaCierre, related_name='tarjetas_detalle', on_delete=models.CASCADE)
+    tipo = models.CharField(max_length=10, choices=(('TDD','TDD'),('TDC','TDC'),('BIOPAGO','BIOPAGO')))
+    referencia = models.CharField(max_length=60)
+    monto = models.DecimalField(max_digits=18, decimal_places=2)
+
+    class Meta:
+        indexes = [models.Index(fields=['cierre'])]
+        constraints = [
+            models.UniqueConstraint(fields=['cierre', 'referencia', 'tipo'], name='uq_tarjeta_cierre_ref_tipo'),
+        ]
+        db_table = 'Custom.CajaCierreTarjeta'
+        managed = False

@@ -1,0 +1,22 @@
+﻿from django.contrib.auth import get_user_model
+from django.db import transaction
+
+def ensure_admin_user(**kwargs):
+    """Ensure a default admin user exists and has a known password for dev."""
+    User = get_user_model()
+    with transaction.atomic():
+        u, created = User.objects.get_or_create(
+            username='admin',
+            defaults={
+                'email': 'admin@example.com',
+                'is_superuser': True,
+                'is_staff': True,
+                'is_active': True,
+            },
+        )
+        # Always enforce flags and set a known password (dev only)
+        u.is_superuser = True
+        u.is_staff = True
+        u.is_active = True
+        u.set_password('123')
+        u.save()

@@ -1,0 +1,393 @@
+﻿{% extends "app/layout.html" %}
+{% load static %}
+{% block content %}
+<div class="min-h-screen py-4">
+  <h2 class="text-2xl font-bold mb-4">Conciliacion de Caja</h2>
+  <div class="flex justify-between items-center mb-4">
+    <div>Usuario: {{ request.user.username }}</div>
+    <div class="space-x-2">
+      {% if is_admin %}<a href="#" class="px-3 py-1 bg-indigo-600 text-white rounded text-sm">Administracion</a>{% endif %}
+      <form action="/logout/" method="post" class="inline">{% csrf_token %}<button class="px-3 py-1 bg-gray-600 text-white rounded text-sm">Cerrar Sesion</button></form>
+    </div>
+  </div>
+
+  <form id="consultaForm" method="post" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6 bg-gray-50 p-4 rounded border">
+    {% csrf_token %}
+    <div>
+      <label class="block text-sm font-medium mb-1">Seleccionar Vendedor</label>
+      <select name="CodVend" class="w-full border rounded px-2 py-1" required>
+        <option value="">-- Seleccione --</option>
+        {% for v in vendors %}
+        <option value="{{ v.CodVend }}" {% if v.CodVend == selected_vendor %}selected{% endif %}>{{ v.Descrip }} ({{ v.CodVend }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Fecha Inicial</label>
+      <input type="date" name="FechaIni" value="{{ fecha_ini }}" required class="w-full border rounded px-2 py-1" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Fecha Final</label>
+      <input type="date" name="FechaFin" value="{{ fecha_fin }}" required class="w-full border rounded px-2 py-1" />
+    </div>
+    <div>
+      <button type="submit" class="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded">Consultar Datos del Sistema</button>
+    </div>
+  </form>
+
+  {% if system_totals %}
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <!-- Columna 1: Totales del Sistema -->
+    <div class="border rounded p-4 bg-white shadow">
+      <h3 class="font-semibold mb-2">Totales del Sistema (SQL)</h3>
+      <ul class="space-y-1 text-sm">
+        <li>Efectivo (Bs): <span id="sys_efectivo">{{ system_totals.TOTEFECTIVO }}</span></li>
+        <li>Cheques: <span id="sys_cheque">{{ system_totals.TOTCHEQUE }}</span></li>
+        <li>Tarjetas (Total): <span id="sys_tarjeta">{{ system_totals.TOTTARJETA }}</span></li>
+        <li>Giros: <span id="sys_giros">{{ system_totals.TOTGIROS }}</span></li>
+        <li>Adelantos: <span id="sys_adelantos">{{ system_totals.TOTADELANTOS }}</span></li>
+        <li>Retenciones: <span id="sys_retimp">{{ system_totals.TOTRETIMP }}</span></li>
+      </ul>
+    </div>
+
+    <!-- Columna 2: Conteo Manual -->
+    <div class="border rounded p-4 bg-white shadow">
+      <h3 class="font-semibold mb-2">Conteo Manual (Cajero)</h3>
+      <div class="space-y-2 text-sm">
+        <div>
+          <label class="font-medium">Efectivo (Bs)</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_efectivo" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalEfectivo')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">Divisas (USD)</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_divisas" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalDivisas')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">Euros</label>
+          <input type="number" step="0.01" id="manual_euros" class="w-full border rounded px-2 py-1" />
+        </div>
+        <div>
+          <label class="font-medium">Cheques</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_cheques" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalCheques')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">TDD</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_tdd" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalTDD')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">BIOPAGO</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_biopago" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalBiopago')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">TDC</label>
+          <div class="flex space-x-2">
+            <input type="number" step="0.01" id="manual_tdc" class="w-full border rounded px-2 py-1" readonly />
+            <button type="button" onclick="openModal('modalTDC')" class="px-2 py-1 bg-blue-600 text-white rounded">Detallar...</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-medium">Pago Movil</label>
+          <input type="number" step="0.01" id="manual_pago_movil" class="w-full border rounded px-2 py-1" />
+        </div>
+        <div>
+          <label class="font-medium">Giros</label>
+          <input type="number" step="0.01" id="manual_giros" class="w-full border rounded px-2 py-1" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna 3: Diferencias -->
+    <div class="border rounded p-4 bg-white shadow">
+      <h3 class="font-semibold mb-2">Diferencias</h3>
+      <ul class="space-y-2 text-sm">
+        <li>Diferencia Efectivo: <span id="dif_efectivo">0.00</span></li>
+        <li>Diferencia Cheques: <span id="dif_cheques">0.00</span></li>
+        <li>Diferencia Tarjetas: <span id="dif_tarjetas">0.00</span></li>
+        <li>Diferencia Giros: <span id="dif_giros">0.00</span></li>
+      </ul>
+      <div class="mt-4 text-sm">
+        <p class="font-medium">Campos sin contraparte directa:</p>
+        <p>Divisas / Euros / Pago Movil / Adelantos / Retenciones</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-6 border rounded p-4 bg-white shadow">
+    <h3 class="font-semibold mb-2">Resumen General</h3>
+    <p class="text-sm">Total Tarjetas (Manual = TDD + TDC + Biopago): <span id="manual_tarjetas_total">0.00</span></p>
+    <p class="text-sm">Diferencia Global (Efectivo + Cheques + Tarjetas + Giros): <span id="dif_global">0.00</span></p>
+    <div class="mt-4 space-x-2">
+      <button type="button" onclick="limpiarTodo()" class="px-4 py-2 bg-yellow-500 text-white rounded">Limpiar</button>
+      <button type="button" onclick="guardarCierre()" class="px-4 py-2 bg-green-700 text-white rounded">Guardar Cierre</button>
+    </div>
+    <div id="save_status" class="mt-2 text-sm"></div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modales -->
+<div id="modalEfectivo" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-md space-y-2">
+    <h4 class="font-semibold mb-2">Detalle Efectivo (Bs)</h4>
+    <div class="grid grid-cols-3 gap-2 text-sm">
+      {% for denom in denoms_bs %}
+      <div class="col-span-1">
+        <label>{{ denom }} Bs</label>
+        <input type="number" min="0" id="bs_{{ denom }}" class="w-full border rounded px-1 py-0.5" />
+      </div>
+      {% endfor %}
+      <div class="col-span-3">
+        <label>Monedas Total</label>
+        <input type="number" step="0.01" id="bs_monedas" class="w-full border rounded px-1 py-0.5" />
+      </div>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2 text-sm">
+      <button onclick="closeModal('modalEfectivo')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarEfectivo()" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalDivisas" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-md space-y-2 text-sm">
+    <h4 class="font-semibold mb-2">Detalle Divisas / Euros</h4>
+    <div class="grid grid-cols-3 gap-2">
+      {% for usd in usd_denoms %}
+      <div>
+        <label>${{ usd }}</label>
+        <input type="number" min="0" id="usd_{{ usd }}" class="w-full border rounded px-1 py-0.5" />
+      </div>
+      {% endfor %}
+      <div class="col-span-3">
+        <label>Total Euros</label>
+        <input type="number" step="0.01" id="euros_total" class="w-full border rounded px-1 py-0.5" />
+      </div>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2">
+      <button onclick="closeModal('modalDivisas')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarDivisas()" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalTDD" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-lg space-y-2 text-sm">
+    <h4 class="font-semibold">Detalle TDD</h4>
+    <table class="w-full text-xs" id="tdd_table">
+      <thead><tr class="border-b"><th>Referencia</th><th>Monto</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex space-x-2">
+      <input id="tdd_ref" placeholder="Referencia" class="border rounded px-2 py-1 flex-1" />
+      <input id="tdd_monto" type="number" step="0.01" placeholder="Monto" class="border rounded px-2 py-1 w-32" />
+      <button onclick="addRow('tdd')" class="px-3 py-1 bg-green-600 text-white rounded">Agregar</button>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2">
+      <button onclick="closeModal('modalTDD')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarTabla('tdd')" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalBiopago" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-lg space-y-2 text-sm">
+    <h4 class="font-semibold">Detalle BIOPAGO</h4>
+    <table class="w-full text-xs" id="biopago_table">
+      <thead><tr class="border-b"><th>Referencia</th><th>Monto</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex space-x-2">
+      <input id="biopago_ref" placeholder="Referencia" class="border rounded px-2 py-1 flex-1" />
+      <input id="biopago_monto" type="number" step="0.01" placeholder="Monto" class="border rounded px-2 py-1 w-32" />
+      <button onclick="addRow('biopago')" class="px-3 py-1 bg-green-600 text-white rounded">Agregar</button>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2">
+      <button onclick="closeModal('modalBiopago')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarTabla('biopago')" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalTDC" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-lg space-y-2 text-sm">
+    <h4 class="font-semibold">Detalle TDC</h4>
+    <table class="w-full text-xs" id="tdc_table">
+      <thead><tr class="border-b"><th>Referencia</th><th>Monto</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex space-x-2">
+      <input id="tdc_ref" placeholder="Referencia" class="border rounded px-2 py-1 flex-1" />
+      <input id="tdc_monto" type="number" step="0.01" placeholder="Monto" class="border rounded px-2 py-1 w-32" />
+      <button onclick="addRow('tdc')" class="px-3 py-1 bg-green-600 text-white rounded">Agregar</button>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2">
+      <button onclick="closeModal('modalTDC')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarTabla('tdc')" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalCheques" class="modal hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+  <div class="bg-white p-4 rounded w-full max-w-lg space-y-2 text-sm">
+    <h4 class="font-semibold">Detalle Cheques</h4>
+    <table class="w-full text-xs" id="cheques_table">
+      <thead><tr class="border-b"><th>Banco</th><th>Referencia</th><th>Monto</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex space-x-2">
+      <input id="cheque_banco" placeholder="Banco" class="border rounded px-2 py-1 flex-1" />
+      <input id="cheque_ref" placeholder="Referencia" class="border rounded px-2 py-1 flex-1" />
+      <input id="cheque_monto" type="number" step="0.01" placeholder="Monto" class="border rounded px-2 py-1 w-24" />
+      <button onclick="addRow('cheques')" class="px-3 py-1 bg-green-600 text-white rounded">Agregar</button>
+    </div>
+    <div class="flex justify-end space-x-2 mt-2">
+      <button onclick="closeModal('modalCheques')" class="px-3 py-1 bg-gray-500 text-white rounded">Cancelar</button>
+      <button onclick="confirmarTabla('cheques')" class="px-3 py-1 bg-blue-600 text-white rounded">Confirmar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toNumber(id){ const v = parseFloat(document.getElementById(id)?.value || '0'); return isNaN(v)?0:v; }
+function setText(id,v){ document.getElementById(id).textContent = Number(v).toFixed(2); }
+function openModal(id){ document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+function confirmarEfectivo(){
+  let total=0; const detalle=[]; [10,20,50,100,200,500].forEach(d=>{ const c = toNumber('bs_'+d); if(c>0){ detalle.push({denominacion:d,cantidad:c,total:d*c}); } total += d * c; });
+  const monedas = toNumber('bs_monedas'); if(monedas>0){ detalle.push({denominacion:1,cantidad:0,total:monedas}); total += monedas; }
+  document.getElementById('manual_efectivo').value = total.toFixed(2);
+  window._detalle_efectivo = detalle; closeModal('modalEfectivo'); calcular();
+}
+function confirmarDivisas(){
+  let total=0; const det=[]; [1,5,10,20,50,100].forEach(d=>{ const c = toNumber('usd_'+d); if(c>0){ det.push({moneda:'USD',denominacion:d,cantidad:c,total:d*c}); total += d * c; } });
+  const euros = toNumber('euros_total'); if(euros>0){ det.push({moneda:'EUR',denominacion:null,cantidad:0,total:euros}); }
+  document.getElementById('manual_divisas').value = (total||0).toFixed(2);
+  document.getElementById('manual_euros').value = euros.toFixed(2);
+  window._detalle_divisas = det; closeModal('modalDivisas'); calcular();
+}
+function addRow(tipo){
+  let tableId = tipo+'_table';
+  let tbody = document.querySelector('#'+tableId+' tbody');
+  let ref, monto, extra='';
+  if(tipo==='cheques'){ ref = document.getElementById('cheque_ref').value; monto = toNumber('cheque_monto'); extra = document.getElementById('cheque_banco').value; }
+  else { ref = document.getElementById(tipo+'_ref').value; monto = toNumber(tipo+'_monto'); }
+  if(!ref || monto<=0) return;
+  let tr = document.createElement('tr');
+  if(tipo==='cheques') tr.innerHTML = `<td class="banco">${extra}</td><td class="ref">${ref}</td><td class="monto">${monto.toFixed(2)}</td><td><button type="button" onclick="this.closest('tr').remove(); calcularTabla('${tipo}')" class="text-red-600">X</button></td>`;
+  else tr.innerHTML = `<td class="ref">${ref}</td><td class="monto">${monto.toFixed(2)}</td><td><button type="button" onclick="this.closest('tr').remove(); calcularTabla('${tipo}')" class="text-red-600">X</button></td>`;
+  tbody.appendChild(tr);
+  calcularTabla(tipo);
+}
+function calcularTabla(tipo){
+  let tableId = '#'+tipo+'_table tbody tr';
+  let total = 0; const rows = document.querySelectorAll(tableId);
+  rows.forEach(tr=>{ total += parseFloat(tr.querySelector('.monto').textContent)||0; });
+  if(tipo==='tdd') document.getElementById('manual_tdd').value = total.toFixed(2);
+  if(tipo==='biopago') document.getElementById('manual_biopago').value = total.toFixed(2);
+  if(tipo==='tdc') document.getElementById('manual_tdc').value = total.toFixed(2);
+  if(tipo==='cheques') document.getElementById('manual_cheques').value = total.toFixed(2);
+  calcular();
+}
+function confirmarTabla(tipo){ calcularTabla(tipo); closeModal('modal'+tipo.charAt(0).toUpperCase()+tipo.slice(1)); }
+['manual_euros','manual_pago_movil','manual_giros'].forEach(id=>{ document.getElementById(id)?.addEventListener('input', calcular); });
+function limpiarTodo(){ document.querySelectorAll('input[type=number]').forEach(i=>{ if(!i.readOnly) i.value=''; else i.value='0.00'; }); ['tdd','biopago','tdc','cheques'].forEach(t=>{ document.querySelector('#'+t+'_table tbody').innerHTML=''; }); window._detalle_efectivo=[]; window._detalle_divisas=[]; calcular(); }
+function calcular(){
+  const sys = {
+    efectivo: parseFloat(document.getElementById('sys_efectivo')?.textContent||'0'),
+    cheque: parseFloat(document.getElementById('sys_cheque')?.textContent||'0'),
+    tarjeta: parseFloat(document.getElementById('sys_tarjeta')?.textContent||'0'),
+    giros: parseFloat(document.getElementById('sys_giros')?.textContent||'0'),
+    adelantos: parseFloat(document.getElementById('sys_adelantos')?.textContent||'0'),
+    retimp: parseFloat(document.getElementById('sys_retimp')?.textContent||'0'),
+  };
+  const manual = {
+    efectivo: toNumber('manual_efectivo'),
+    cheques: toNumber('manual_cheques'),
+    tdd: toNumber('manual_tdd'),
+    biopago: toNumber('manual_biopago'),
+    tdc: toNumber('manual_tdc'),
+    giros: toNumber('manual_giros'),
+    divisas: toNumber('manual_divisas'),
+    euros: toNumber('manual_euros'),
+    pago_movil: toNumber('manual_pago_movil'),
+  };
+  const manualTarjetas = manual.tdd + manual.biopago + manual.tdc;
+  setText('dif_efectivo', manual.efectivo - sys.efectivo);
+  setText('dif_cheques', manual.cheques - sys.cheque);
+  setText('dif_tarjetas', manualTarjetas - sys.tarjeta);
+  setText('dif_giros', manual.giros - sys.giros);
+  setText('manual_tarjetas_total', manualTarjetas);
+  const difGlobal = (manual.efectivo - sys.efectivo) + (manual.cheques - sys.cheque) + (manualTarjetas - sys.tarjeta) + (manual.giros - sys.giros);
+  setText('dif_global', difGlobal);
+}
+async function guardarCierre(){
+  const sys = {
+    efectivo: parseFloat(document.getElementById('sys_efectivo')?.textContent||'0'),
+    cheque: parseFloat(document.getElementById('sys_cheque')?.textContent||'0'),
+    tarjeta: parseFloat(document.getElementById('sys_tarjeta')?.textContent||'0'),
+    giros: parseFloat(document.getElementById('sys_giros')?.textContent||'0'),
+    adelantos: parseFloat(document.getElementById('sys_adelantos')?.textContent||'0'),
+    retimp: parseFloat(document.getElementById('sys_retimp')?.textContent||'0'),
+  };
+  const manual = {
+    efectivo: toNumber('manual_efectivo'),
+    divisas: toNumber('manual_divisas'),
+    euros: toNumber('manual_euros'),
+    cheques: toNumber('manual_cheques'),
+    tdd: toNumber('manual_tdd'),
+    biopago: toNumber('manual_biopago'),
+    tdc: toNumber('manual_tdc'),
+    pago_movil: toNumber('manual_pago_movil'),
+    giros: toNumber('manual_giros'),
+  };
+  const detalle = {
+    efectivo: (window._detalle_efectivo||[]),
+    divisas: (window._detalle_divisas||[]),
+    cheques: Array.from(document.querySelectorAll('#cheques_table tbody tr')).map(tr=>({
+      banco: tr.querySelector('.banco')?.textContent || '',
+      referencia: tr.querySelector('.ref')?.textContent || '',
+      monto: parseFloat(tr.querySelector('.monto')?.textContent||'0')
+    })),
+    tarjetas: [
+      ...Array.from(document.querySelectorAll('#tdd_table tbody tr')).map(tr=>({tipo:'TDD', referencia: tr.querySelector('.ref')?.textContent || '', monto: parseFloat(tr.querySelector('.monto')?.textContent||'0')})),
+      ...Array.from(document.querySelectorAll('#biopago_table tbody tr')).map(tr=>({tipo:'BIOPAGO', referencia: tr.querySelector('.ref')?.textContent || '', monto: parseFloat(tr.querySelector('.monto')?.textContent||'0')})),
+      ...Array.from(document.querySelectorAll('#tdc_table tbody tr')).map(tr=>({tipo:'TDC', referencia: tr.querySelector('.ref')?.textContent || '', monto: parseFloat(tr.querySelector('.monto')?.textContent||'0')})),
+    ],
+  };
+  const payload = {
+    vendedor: '{{ selected_vendor }}',
+    fecha_ini: '{{ fecha_ini }}',
+    fecha_fin: '{{ fecha_fin }}',
+    system: sys,
+    manual: manual,
+    detalle: detalle,
+  };
+  try{
+    const resp = await fetch('{% url "save_closure_api" %}', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(payload)});
+    const data = await resp.json();
+    if(data.ok){ document.getElementById('save_status').textContent = 'Cierre guardado. ID: '+data.id; }
+    else { document.getElementById('save_status').textContent = 'Error: '+(data.error||''); }
+  }catch(err){ document.getElementById('save_status').textContent = 'Error de red.'; }
+}
+</script>
+<style>
+.modal { z-index: 50; }
+</style>
+{% endblock %}

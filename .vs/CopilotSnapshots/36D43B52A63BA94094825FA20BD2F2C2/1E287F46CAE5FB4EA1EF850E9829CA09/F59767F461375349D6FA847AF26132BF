@@ -1,0 +1,167 @@
+﻿### Cash Register Closing Process (Conciliation)
+
+Below is the updated flow and data model for the closing (conciliation) process.
+
+#### Data Model (SQL Server DDL)
+
+```sql
+-- Main closure header table
+CREATE TABLE dbo.CajaCierre (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    vendedor_codigo VARCHAR(10) NOT NULL,
+    vendedor_nombre VARCHAR(120) NULL,
+    fecha_ini DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    -- System totals
+    totefectivo DECIMAL(18,2) NOT NULL DEFAULT 0,
+    totcheque DECIMAL(18,2) NOT NULL DEFAULT 0,
+    tottarjeta DECIMAL(18,2) NOT NULL DEFAULT 0,
+    totgiros DECIMAL(18,2) NOT NULL DEFAULT 0,
+    totadelantos DECIMAL(18,2) NOT NULL DEFAULT 0,
+    totretimp DECIMAL(18,2) NOT NULL DEFAULT 0,
+    -- Manual (cashier) totals
+    manual_efectivo_bs DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_divisas DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_euros DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_cheques DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_tdd DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_tdc DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_biopago DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_pago_movil DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual_giros DECIMAL(18,2) NOT NULL DEFAULT 0,
+    creado_por INT NOT NULL,
+    creado_en DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_CajaCierre_User FOREIGN KEY (creado_por) REFERENCES auth_user(id)
+);
+GO
+
+-- Cash (efectivo) breakdown
+CREATE TABLE dbo.CajaCierreEfectivo (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    cierre_id BIGINT NOT NULL,
+    denominacion INT NOT NULL, -- bill face value
+    cantidad INT NOT NULL DEFAULT 0,
+    total DECIMAL(18,2) NOT NULL, -- denominacion * cantidad (or coins total)
+    CONSTRAINT FK_Efectivo_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+);
+GO
+CREATE INDEX IX_CajaCierreEfectivo_Cierre ON dbo.CajaCierreEfectivo(cierre_id);
+GO
+
+-- Foreign currency (USD bills and EUR total)
+CREATE TABLE dbo.CajaCierreDivisa (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    cierre_id BIGINT NOT NULL,
+    moneda CHAR(3) NOT NULL CHECK (moneda IN ('USD','EUR')),
+    denominacion INT NULL, -- NULL for EUR total row
+    cantidad INT NOT NULL DEFAULT 0,
+    total DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_Divisa_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+);
+GO
+CREATE INDEX IX_CajaCierreDivisa_Cierre ON dbo.CajaCierreDivisa(cierre_id);
+GO
+
+-- Checks (cheques)
+CREATE TABLE dbo.CajaCierreCheque (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    cierre_id BIGINT NOT NULL,
+    banco VARCHAR(60) NOT NULL,
+    referencia VARCHAR(60) NOT NULL,
+    monto DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_Cheque_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+);
+GO
+CREATE INDEX IX_CajaCierreCheque_Cierre ON dbo.CajaCierreCheque(cierre_id);
+GO
+
+-- Card / Biopago transactions (grouped under tarjetas)
+CREATE TABLE dbo.CajaCierreTarjeta (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    cierre_id BIGINT NOT NULL,
+    tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('TDD','TDC','BIOPAGO')),
+    referencia VARCHAR(60) NOT NULL,
+    monto DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_Tarjeta_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+);
+GO
+CREATE INDEX IX_CajaCierreTarjeta_Cierre ON dbo.CajaCierreTarjeta(cierre_id);
+GO
+
+-- Optional: difference tracking (if desired later)
+-- CREATE TABLE dbo.CajaCierreDiferencia (
+--     id BIGINT IDENTITY(1,1) PRIMARY KEY,
+--     cierre_id BIGINT NOT NULL,
+--     categoria VARCHAR(30) NOT NULL, -- e.g. EFECTIVO, CHEQUES, TARJETAS, GIROS
+--     sistema DECIMAL(18,2) NOT NULL,
+--     manual DECIMAL(18,2) NOT NULL,
+--     diferencia AS (manual - sistema) PERSISTED,
+--     CONSTRAINT FK_Diferencia_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+-- );
+GO
+
+#### Notes
+- All object names use plain ASCII, no accents, to avoid encoding issues.
+- Consider adding unique index on (cierre_id, referencia) for tarjeta and cheque tables.
+- Add auditing columns (modified_at, modified_by) if needed.
+
+#### Extended Flow (Including Save)
+
+```mermaid
+flowchart TD
+    A[Start] --> B(Login Screen)
+    B --> C{Enter Credentials}
+    C --> D[Validate]
+    D -->|Invalid| B
+    D -->|Role: Cashier| E[Go to Conciliation]
+    D -->|Role: Admin| F[Conciliation + Admin Button]
+    E --> G[Load Vendors]
+    F --> G
+    G --> H[Select Vendor + Dates]
+    H --> I[Query System Totals]
+    I --> J[Execute Summary SQL]
+    J --> K[Render System Totals]
+    K --> L[Manual Counting]
+    L --> M{Modal Actions}
+    M --> M1[Cash Bills]
+    M --> M2[USD/EUR]
+    M --> M3[TDD Tickets]
+    M --> M4[BIOPAGO]
+    M --> M5[TDC Tickets]
+    M --> M6[Cheques]
+    M1 --> N[Update Manual Totals]
+    M2 --> N
+    M3 --> N
+    M4 --> N
+    M5 --> N
+    M6 --> N
+    N --> O[Calc Differences]
+    O --> P[Realtime Summary]
+    P --> Q{Action}
+    Q -->|Save| R[POST /api/save-closure]
+    Q -->|Clear| L
+    Q -->|Logout| B
+    R --> S[Persist Header + Details]
+    S --> T[Success Message]
+    T --> L
+```
+
+#### Save Sequence
+1. Frontend builds JSON payload.
+2. API validates required fields.
+3. Header created, details inserted.
+4. Returns closure id.
+
+#### Suggested Index Enhancements
+```sql
+CREATE UNIQUE INDEX UX_Tarjeta_Cierre_Ref ON dbo.CajaCierreTarjeta(cierre_id, referencia);
+CREATE UNIQUE INDEX UX_Cheque_Cierre_Ref ON dbo.CajaCierreCheque(cierre_id, referencia);
+```
+
+#### Migration vs Manual DDL
+If using Django migrations against SQL Server:
+```
+python manage.py makemigrations
+python manage.py migrate
+```
+Manual DDL is only needed if schema managed outside Django.

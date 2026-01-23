@@ -1,0 +1,54 @@
+﻿### Mi Diagrama de Flujo
+
+```mermaid
+flowchart TD
+    A[Inicio de la App] --> B(Mostrar Pantalla de Login)
+    B --> C{Ingresar Usuario y Contraseña}
+    C --> D[Validar Credenciales]
+    
+    D -->|"Credenciales Incorrectas"| E[Mostrar Error]
+    E --> B
+    
+    D -->|"Rol: Cajero"| F[Ocultar Login, Mostrar Pantalla de Conciliación]
+    D -->|"Rol: Admin"| G["Ocultar Login, Mostrar Pantalla de Conciliación + Botón Admin"]
+    
+    F --> H(Pantalla de Conciliación)
+    G --> H
+    
+    H --> I["Clic 'Consultar Datos del Sistema'"]
+    I --> J["Backend: Ejecutar SQL de 'Cierre_de_caja.rtm'"]
+    J --> K["Poblar Columna 1 'Totales del Sistema' (TOTEFECTIVO, TOTTARJETA, etc.)"]
+    K --> L(Iniciar Conteo Manual en Columna 2)
+    
+    L --> M{Interacción del Cajero}
+    M -->|"Ingresar Giros, Pago Movil"| N[Actualizar campos simples]
+    M -->|"Clic 'Detallar Efectivo'"| O["Abrir Modal 1: Conteo de Billetes Bs"]
+    M -->|"Clic 'Detallar Divisas'"| P["Abrir Modal 2: Conteo de Billetes USD/Euros"]
+    M -->|"Clic 'Detallar TDD'"| Q["Abrir Modal 3: Lista de Tickets TDD"]
+    M -->|"Clic 'Detallar BIOPAGO'"| R["Abrir Modal 4: Lista de Transacciones Biopago"]
+    M -->|"Clic 'Detallar TDC'"| S["Abrir Modal 5: Lista de Tickets TDC"]
+    M -->|"Clic 'Detallar Cheques'"| T["Abrir Modal 6: Lista de Cheques"]
+    
+    O -->|"Clic 'Confirmar'"| U["Actualizar Total Efectivo (Bs)"]
+    P -->|"Clic 'Confirmar'"| U2[Actualizar Total Divisas/Euros]
+    Q -->|"Clic 'Confirmar'"| U3[Actualizar Total TDD]
+    R -->|"Clic 'Confirmar'"| U4[Actualizar Total BIOPAGO]
+    S -->|"Clic 'Confirmar'"| U5[Actualizar Total TDC]
+    T -->|"Clic 'Confirmar'"| U6[Actualizar Total Cheques]
+    
+    N --> V(Calcular Diferencias)
+    U --> V
+    U2 --> V
+    U3 --> V
+    U4 --> V
+    U5 --> V
+    U6 --> V
+    
+    V --> W["Actualizar Columna 3 'Diferencias' en tiempo real"]
+    W -.-> X["Actualizar 'Resumen General' en tiempo real"]
+    X --> Y{Acción Final}
+    
+    Y -->|"Clic 'Guardar Cierre'"| Z[Mostrar Mensaje de Éxito]
+    Y -->|"Clic 'Limpiar'"| L
+    Y -->|"Clic 'Cerrar Sesión'"| B
+    Z --> B
