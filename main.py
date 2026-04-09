@@ -604,6 +604,23 @@ async def guardar_transaccion(payload: GuardarTransaccionRequest):
         cursor.close()
         conn.close()
 
+@app.delete("/caja/calculadora/transaccion/{transaccion_id}")
+async def eliminar_transaccion_dolares(transaccion_id: int):
+    """Elimina una transacción del registro histórico de la Calculadora Mixta."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM Custom.CajaTransaccionesDolares WHERE id = ?', (transaccion_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Transacción no encontrada")
+        conn.commit()
+        return {"status": "success", "message": "Transacción eliminada correctamente."}
+    except pyodbc.Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/caja/calculadora/reporte")
 async def reporte_dolares(fecha: str | None = None):

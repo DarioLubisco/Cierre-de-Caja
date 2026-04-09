@@ -1540,6 +1540,16 @@ function fmtBig(n) {
 }
 
 async function guardarTransaccionCalc() {
+  // Obligar autenticación (login con código de usuario)
+  if (!state.perfil || !state.perfil.cod_usua) {
+    showToast('Debe identificarse con su Usuario Saint en el menú principal antes de guardar.', 'danger');
+    // Animación visual al icono de usuario para guiar al vendedor
+    const uLabel = document.getElementById('current-user-label');
+    uLabel.style.color = 'var(--danger)';
+    setTimeout(() => uLabel.style.color = '', 3000);
+    return;
+  }
+
   const btn = document.getElementById('btn-calc-guardar');
   const factBs = parseFloat(document.getElementById('calc-factura-bs-input').value) || 0;
   
@@ -1630,7 +1640,8 @@ async function cargarReporteDolares() {
   const fInput = document.getElementById('calc-rep-fecha');
   let fecha = fInput.value;
   if(!fecha) {
-    fecha = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    fecha = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     fInput.value = fecha;
   }
 
@@ -1662,8 +1673,8 @@ async function cargarReporteDolares() {
           
           tbody.innerHTML += `
             <tr style="border-bottom: 1px solid var(--border-subtle);">
-              <td>${t.id}</td>
-              <td>${new Date(t.fecha).toLocaleTimeString('es-VE')}</td>
+              <td style="font-size:0.75rem; color:var(--text-muted);">${t.id}</td>
+              <td style="white-space:nowrap;">${new Date(t.fecha).toLocaleTimeString('es-VE', {hour:'2-digit', minute:'2-digit'})}</td>
               <td style="font-weight:bold;">${fmtBig(t.factura_bs)}</td>
               <td style="color:var(--success);">${t.rec_ef_usd.toFixed(2)}</td>
               <td style="color:#3b82f6;">${t.rec_on_usd.toFixed(2)}</td>
@@ -1674,6 +1685,11 @@ async function cargarReporteDolares() {
               <td style="color:var(--danger);">${fmtBig(t.vuelto_bs)}</td>
               <td style="color:var(--danger);">${fmtBig(t.vuelto_pm_bs)}</td>
               <td style="text-align:center; color:${color}; font-weight:bold; font-size:0.75rem;">${t.resultado}</td>
+              <td style="text-align:center;">
+                  <button class="btn btn-secondary" onclick="eliminarTransaccionCalc(${t.id})" style="padding:0.2rem 0.4rem; color:var(--danger); font-size:0.7rem;" title="Eliminar registro">
+                      <i class="fas fa-trash-alt"></i>
+                  </button>
+              </td>
             </tr>
           `;
         });
@@ -1690,6 +1706,20 @@ async function cargarReporteDolares() {
 function toggleTablaReporte() {
   const wrap = document.getElementById('calc-rep-tabla-wrap');
   wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+}
+
+async function eliminarTransaccionCalc(id) {
+  if(!confirm(`¿Está seguro de ELIMINAR la transacción #${id} del registro?`)) return;
+
+  try {
+    const res = await fetch(`/caja/calculadora/transaccion/${id}`, { method: 'DELETE' });
+    if(!res.ok) throw new Error(await res.text());
+    
+    showToast('Transacción eliminada con éxito', 'success');
+    cargarReporteDolares(); // Refrescar los KPIs automáticamente
+  } catch (e) {
+    showToast('Error al eliminar: ' + e.message, 'danger');
+  }
 }
 
 function limpiarCalculadora() {
