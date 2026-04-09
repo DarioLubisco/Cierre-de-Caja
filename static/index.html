@@ -1558,7 +1558,7 @@ async function guardarTransaccionCalc() {
   const recEfUsd  = parseFloat(document.getElementById('calc-rec-ef-usd').value)  || 0;
   const recOnUsd  = parseFloat(document.getElementById('calc-rec-on-usd').value)  || 0;
   const recEfBs   = parseFloat(document.getElementById('calc-rec-ef-bs').value)   || 0;
-  const recPmBs   = parseFloat(document.getElementById('calc-rec-pm-bs').value)   || 0;
+  const recPmBs   = parseFloat(document.getElementById('calc-rec-on-bs').value)   || 0;
   const recBioBs  = parseFloat(document.getElementById('calc-rec-bio-bs').value)  || 0;
 
   const totalRecUsd = recEfUsd + recOnUsd + (recEfBs + recPmBs + recBioBs) / tasa;
