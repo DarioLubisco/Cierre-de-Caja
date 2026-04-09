@@ -623,7 +623,7 @@ async def eliminar_transaccion_dolares(transaccion_id: int):
         conn.close()
 
 @app.get("/caja/calculadora/reporte")
-async def reporte_dolares(fecha: str | None = None):
+async def reporte_dolares(fecha: str | None = None, vendedor_codigo: str | None = None):
     """
     Retorna el resumen de dólares del día (o de la fecha indicada):
     - Total efectivo USD recibido
@@ -631,6 +631,7 @@ async def reporte_dolares(fecha: str | None = None):
     - Total vuelto USD dado
     - Saldo neto USD en caja
     - Últimas N transacciones
+    Filtra opcionalmente por un vendedor en específico.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -638,7 +639,14 @@ async def reporte_dolares(fecha: str | None = None):
         if not fecha:
             fecha = date.today().isoformat()
 
-        cursor.execute('''
+        # Armar lógica condicional de filtrado para el vendedor
+        filtro_vend_sql = ""
+        params_summary = [fecha]
+        if vendedor_codigo:
+            filtro_vend_sql = " AND vendedor_codigo = ?"
+            params_summary.append(vendedor_codigo)
+
+        cursor.execute(f'''
             SELECT
                 COUNT(*)                              AS nro_transacciones,
                 ISNULL(SUM(rec_ef_usd), 0)            AS total_efectivo_usd,
@@ -651,8 +659,8 @@ async def reporte_dolares(fecha: str | None = None):
                 ISNULL(SUM(rec_ef_usd + rec_on_usd), 0)
                     - ISNULL(SUM(vuelto_usd), 0)      AS saldo_usd_caja
             FROM Custom.CajaTransaccionesDolares
-            WHERE CAST(fecha AS DATE) = ?
-        ''', (fecha,))
+            WHERE CAST(fecha AS DATE) = ? {filtro_vend_sql}
+        ''', tuple(params_summary))
         summary_row = cursor.fetchone()
 
         summary = {
@@ -669,7 +677,7 @@ async def reporte_dolares(fecha: str | None = None):
         }
 
         # Últimas 50 transacciones del día
-        cursor.execute('''
+        cursor.execute(f'''
             SELECT TOP 50
                 id, fecha, vendedor_codigo, observacion, tasa_bcv,
                 factura_bs, factura_usd,
@@ -678,9 +686,9 @@ async def reporte_dolares(fecha: str | None = None):
                 vuelto_usd, vuelto_bs, vuelto_pm_bs, total_vuelto_usd,
                 resultado, diff_usd, diff_bs
             FROM Custom.CajaTransaccionesDolares
-            WHERE CAST(fecha AS DATE) = ?
+            WHERE CAST(fecha AS DATE) = ? {filtro_vend_sql}
             ORDER BY fecha DESC
-        ''', (fecha,))
+        ''', tuple(params_summary))
 
         cols = [c[0] for c in cursor.description]
         transacciones = [dict(zip(cols, row)) for row in cursor.fetchall()]

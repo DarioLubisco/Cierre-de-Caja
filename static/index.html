@@ -527,7 +527,10 @@
         <div class="calc-rep-header">
           <span><i class="fas fa-chart-bar" style="color:var(--primary-accent);"></i> Resumen de Dólares en Caja</span>
           <div style="display:flex; gap:0.5rem; align-items:center;">
-            <input type="date" id="calc-rep-fecha" class="form-control" style="width:145px; padding:0.3rem 0.6rem; font-size:0.85rem;"/>
+            <input type="date" id="calc-rep-fecha" class="form-control" style="width:145px; padding:0.3rem 0.6rem; font-size:0.85rem;" onchange="cargarReporteDolares()"/>
+            <select id="calc-rep-vendedor" class="form-control" style="width:140px; padding:0.3rem 0.6rem; font-size:0.85rem;" onchange="cargarReporteDolares()">
+              <option value="">TODOS</option>
+            </select>
             <button class="btn btn-secondary" onclick="cargarReporteDolares()" style="padding:0.35rem 0.7rem; font-size:0.82rem;">
               <i class="fas fa-sync-alt"></i>
             </button>
@@ -1012,7 +1015,12 @@ async function loadInitialData() {
 
         state.vendedores = datV.data;
         const selVend = document.getElementById('inp-vendedor');
-        datV.data.forEach(v => selVend.add(new Option(`${v.nombre} (${v.codigo})`, v.codigo)));
+        const calcRepVend = document.getElementById('calc-rep-vendedor');
+        datV.data.forEach(v => {
+            const optText = `${v.nombre} (${v.codigo})`;
+            selVend.add(new Option(optText, v.codigo));
+            calcRepVend.add(new Option(optText, v.codigo));
+        });
         
         // Mostrar la barra de login para que el usuario ingrese su código
         document.getElementById('current-user-label').textContent = 'Identifícate con tu código Saint';
@@ -1645,8 +1653,13 @@ async function cargarReporteDolares() {
     fInput.value = fecha;
   }
 
+  const vendSel = document.getElementById('calc-rep-vendedor').value;
+
   try {
-    const res = await fetch(`/caja/calculadora/reporte?fecha=${fecha}`);
+    let url = `/caja/calculadora/reporte?fecha=${fecha}`;
+    if (vendSel) url += `&vendedor_codigo=${vendSel}`;
+    
+    const res = await fetch(url);
     if(!res.ok) throw new Error(await res.text());
     const data = await res.json();
 
@@ -1889,17 +1902,28 @@ async function cargarPerfilUsuario() {
             document.getElementById('nav-admin').style.display = 'flex';
             showToast(`Bienvenido, ${perfil.nombre}. Acceso de Administrador habilitado. ✅`, 'success');
         } else {
-            // Si es vendedor: pre-seleccionar su código en el cuadre
+            // Si es vendedor: pre-seleccionar su código en el cuadre y en el reporte
             document.getElementById('nav-admin').style.display = 'none';
             const vendSel = document.getElementById('inp-vendedor');
-            if (vendSel && perfil.cod_vend) {
-                // Buscar la opción que coincida
-                for (let opt of vendSel.options) {
-                    if (opt.value === perfil.cod_vend) {
-                        vendSel.value = perfil.cod_vend;
-                        vendSel.dispatchEvent(new Event('change'));
-                        break;
+            const calcRepVend = document.getElementById('calc-rep-vendedor');
+            if (perfil.cod_vend) {
+                if (vendSel) {
+                    for (let opt of vendSel.options) {
+                        if (opt.value === perfil.cod_vend) {
+                            vendSel.value = perfil.cod_vend;
+                            vendSel.dispatchEvent(new Event('change'));
+                            break;
+                        }
                     }
+                }
+                if (calcRepVend) {
+                    for (let opt of calcRepVend.options) {
+                        if (opt.value === perfil.cod_usua) {
+                            calcRepVend.value = perfil.cod_usua;
+                            break;
+                        }
+                    }
+                    cargarReporteDolares(); // Refrescar el cuadro de Dólares luego de setear el vendedor.
                 }
             }
             showToast(`Bienvenido, ${perfil.nombre}. Cuadre pre-cargado a tu usuario. ✅`, 'success');
