@@ -1369,6 +1369,7 @@ function buildPayload(estado) {
   const tdd  = state.tickets.filter(t => t.tipo === 'TDD').reduce((s, t) => s + t.monto, 0);
   const tdc  = state.tickets.filter(t => t.tipo === 'TDC').reduce((s, t) => s + t.monto, 0);
   const bio  = state.tickets.filter(t => t.tipo === 'BIOPAGO').reduce((s, t) => s + t.monto, 0);
+  const pagoMovil  = state.tickets.filter(t => t.tipo === 'PAGO_MOVIL').reduce((s, t) => s + t.monto, 0);
 
   return {
     vendedor_codigo: state.vendedor,
@@ -1388,6 +1389,7 @@ function buildPayload(estado) {
     manual_tdd: tdd,
     manual_tdc: tdc,
     manual_biopago: bio,
+    manual_pago_movil: pagoMovil,
     estado
   };
 }
@@ -1779,7 +1781,7 @@ async function buscarReportes() {
         json.data.forEach(c => {
             const tr = document.createElement('tr');
             const totalEfectivo = c.manual_efectivo_bs + c.manual_divisas * state.tasaDolar;
-            const totalPos = c.manual_tdd + c.manual_tdc + c.manual_biopago;
+            const totalPos = c.manual_tdd + c.manual_tdc + c.manual_biopago + (c.manual_pago_movil || 0);
             // Omitimos calculo directo de diferencia y dejamos que lo vean en detalle (para ser mas rapidos)
 
             const badge = c.estado === 'FINALIZADO' 

@@ -58,6 +58,7 @@ class ConciliarRequest(BaseModel):
     manual_tdd: float
     manual_tdc: float
     manual_biopago: float
+    manual_pago_movil: float = 0.0
 
 @app.get("/caja/vendedores")
 async def get_vendedores():
@@ -167,7 +168,7 @@ async def get_totales(vendedor_codigo: str, fecha: str):
 
         # 2. Check for an active Precierre (estado = 'BORRADOR')
         cursor.execute('''
-            SELECT id, manual_efectivo_bs, manual_divisas, manual_euros, manual_tdd, manual_tdc, manual_biopago
+            SELECT id, manual_efectivo_bs, manual_divisas, manual_euros, manual_tdd, manual_tdc, manual_biopago, manual_pago_movil
             FROM Custom.CajaCierre
             WHERE vendedor_codigo = ? AND CAST(fecha_ini AS DATE) = ? AND estado = 'BORRADOR'
         ''', (vendedor_codigo, fecha))
@@ -188,6 +189,7 @@ async def get_totales(vendedor_codigo: str, fecha: str):
                 "manual_tdd": float(borrador_row[4]),
                 "manual_tdc": float(borrador_row[5]),
                 "manual_biopago": float(borrador_row[6]),
+                "manual_pago_movil": float(borrador_row[7] if borrador_row[7] is not None else 0),
                 "detalles_efectivo": [],
                 "detalles_tarjetas": []
             }
@@ -249,10 +251,11 @@ async def _upsert_cierre(payload: ConciliarRequest, estado: str):
                     manual_tdd         = ?,
                     manual_tdc         = ?,
                     manual_biopago     = ?,
+                    manual_pago_movil  = ?,
                     estado             = ?
                 WHERE id = ?
             ''', (payload.vendedor_nombre, payload.manual_efectivo_bs, payload.manual_divisas, payload.manual_euros,
-                  payload.manual_tdd, payload.manual_tdc, payload.manual_biopago,
+                  payload.manual_tdd, payload.manual_tdc, payload.manual_biopago, payload.manual_pago_movil,
                   estado, cierre_id))
             # Wipe detail tables before re-inserting
             cursor.execute("DELETE FROM Custom.CajaCierreEfectivo WHERE cierre_id = ?", (cierre_id,))
@@ -265,13 +268,13 @@ async def _upsert_cierre(payload: ConciliarRequest, estado: str):
                 INSERT INTO Custom.CajaCierre
                     (vendedor_codigo, vendedor_nombre, fecha_ini, fecha_fin,
                      manual_efectivo_bs, manual_divisas, manual_euros,
-                     manual_tdd, manual_tdc, manual_biopago, estado)
+                     manual_tdd, manual_tdc, manual_biopago, manual_pago_movil, estado)
                 OUTPUT INSERTED.id
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (payload.vendedor_codigo, payload.vendedor_nombre,
                   payload.fecha_ini, payload.fecha_fin,
                   payload.manual_efectivo_bs, payload.manual_divisas, payload.manual_euros,
-                  payload.manual_tdd, payload.manual_tdc, payload.manual_biopago, estado))
+                  payload.manual_tdd, payload.manual_tdc, payload.manual_biopago, payload.manual_pago_movil, estado))
             cierre_id = int(cursor.fetchone()[0])
         
         # ── Insert denomination breakdown (Bs) ────────────────────────────
@@ -325,7 +328,7 @@ async def listar_reportes(fecha_desde: str, fecha_hasta: str, vendedor_codigo: s
     try:
         query = '''
             SELECT id, vendedor_codigo, vendedor_nombre, fecha_ini, estado, 
-                   manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago
+                   manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago, manual_pago_movil
             FROM Custom.CajaCierre
             WHERE CAST(fecha_ini AS DATE) >= ? AND CAST(fecha_ini AS DATE) <= ?
         '''
@@ -347,6 +350,7 @@ async def listar_reportes(fecha_desde: str, fecha_hasta: str, vendedor_codigo: s
             c['manual_tdd'] = float(c['manual_tdd'] or 0)
             c['manual_tdc'] = float(c['manual_tdc'] or 0)
             c['manual_biopago'] = float(c['manual_biopago'] or 0)
+            c['manual_pago_movil'] = float(c['manual_pago_movil'] or 0)
             
         return {"status": "success", "data": cierres}
     except pyodbc.Error as strErr:
@@ -360,7 +364,7 @@ async def detalle_reporte(cierre_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, vendedor_codigo, vendedor_nombre, fecha_ini, estado, manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago FROM Custom.CajaCierre WHERE id = ?", (cierre_id,))
+        cursor.execute("SELECT id, vendedor_codigo, vendedor_nombre, fecha_ini, estado, manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago, manual_pago_movil FROM Custom.CajaCierre WHERE id = ?", (cierre_id,))
         header_row = cursor.fetchone()
         if not header_row:
             raise HTTPException(status_code=404, detail="Cierre no encontrado")
@@ -370,7 +374,7 @@ async def detalle_reporte(cierre_id: int):
             "fecha_ini": header_row[3], "estado": header_row[4],
             "manual_efectivo_bs": float(header_row[5] or 0), "manual_divisas": float(header_row[6] or 0),
             "manual_tdd": float(header_row[7] or 0), "manual_tdc": float(header_row[8] or 0),
-            "manual_biopago": float(header_row[9] or 0)
+            "manual_biopago": float(header_row[9] or 0), "manual_pago_movil": float(header_row[10] or 0)
         }
             
         # Differences
@@ -490,7 +494,7 @@ async def get_resumen_diario(fecha: str):
         cursor.execute('''
             SELECT vendedor_codigo, id, estado, 
                    manual_efectivo_bs, manual_divisas,
-                   manual_tdd, manual_tdc, manual_biopago
+                   manual_tdd, manual_tdc, manual_biopago, manual_pago_movil
             FROM Custom.CajaCierre
             WHERE CAST(fecha_ini AS DATE) = ?
         ''', (fecha,))
@@ -502,7 +506,7 @@ async def get_resumen_diario(fecha: str):
                 vendedores_sis[cod]["cierre_id"] = int(r[1])
                 vendedores_sis[cod]["manual_efectivo_bs"] = float(r[3] or 0)
                 # Sumar todos los electrónicos para el resumen
-                vendedores_sis[cod]["manual_total_pos"] = float((r[5] or 0) + (r[6] or 0) + (r[7] or 0))
+                vendedores_sis[cod]["manual_total_pos"] = float((r[5] or 0) + (r[6] or 0) + (r[7] or 0) + (r[8] or 0))
         
         # 3. Totales globales
         resultado = list(vendedores_sis.values())
@@ -725,7 +729,7 @@ async def generar_pdf_cierre(cierre_id: int):
         # 1. Cabecera del cierre
         cursor.execute("""
             SELECT id, vendedor_codigo, vendedor_nombre, fecha_ini, estado,
-                   manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago
+                   manual_efectivo_bs, manual_divisas, manual_tdd, manual_tdc, manual_biopago, manual_pago_movil
             FROM Custom.CajaCierre WHERE id = ?
         """, (cierre_id,))
         row = cursor.fetchone()
@@ -738,7 +742,7 @@ async def generar_pdf_cierre(cierre_id: int):
             "fecha": str(row[3])[:10], "estado": str(row[4]).strip(),
             "ef_bs": float(row[5] or 0), "divisas": float(row[6] or 0),
             "tdd": float(row[7] or 0), "tdc": float(row[8] or 0),
-            "biopago": float(row[9] or 0),
+            "biopago": float(row[9] or 0), "pago_movil": float(row[10] or 0),
         }
 
         # 2. Última venta del vendedor ese día (hora de factura)
@@ -867,7 +871,7 @@ async def generar_pdf_cierre(cierre_id: int):
     story.append(Spacer(1, 0.2*cm))
 
     man_ef  = cierre["ef_bs"] + cierre["divisas"]
-    man_pos = cierre["tdd"] + cierre["tdc"] + cierre["biopago"]
+    man_pos = cierre["tdd"] + cierre["tdc"] + cierre["biopago"] + cierre["pago_movil"]
     diff_ef  = man_ef  - sis_efectivo
     diff_pos = man_pos - sis_tarjeta
 
