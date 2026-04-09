@@ -1,8 +1,11 @@
-### Cash Register Closing Process (Conciliation)
+# Cash Register Closing Process (Conciliation)
 
 Below is the updated flow and data model for the closing (conciliation) process.
 
-#### Data Model (SQL Server DDL)
+> [!TIP]
+> **Diagrama Disponible:** Para visualizar el flujo operativo, abre el archivo [Flujo_Caja.mmd](file:///c:/source/Cierre%20de%20Caja/Flujo_Caja.mmd) o cópialo en el Mermaid Live Editor oficial.
+
+## Data Model (SQL Server DDL)
 
 ```sql
 -- Main closure header table
@@ -27,12 +30,28 @@ CREATE TABLE dbo.CajaCierre (
     manual_tdd DECIMAL(18,2) NOT NULL DEFAULT 0,
     manual_tdc DECIMAL(18,2) NOT NULL DEFAULT 0,
     manual_biopago DECIMAL(18,2) NOT NULL DEFAULT 0,
-    manual_pago_movil DECIMAL(18,2) NOT NULL DEFAULT 0,
     manual_giros DECIMAL(18,2) NOT NULL DEFAULT 0,
+    estado VARCHAR(20) NOT NULL DEFAULT 'BORRADOR', -- BORRADOR (Precierre) or FINALIZADO
     creado_por INT NOT NULL,
     creado_en DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
-    CONSTRAINT FK_CajaCierre_User FOREIGN KEY (creado_por) REFERENCES auth_user(id)
+    CONSTRAINT FK_CajaCierre_User FOREIGN KEY (creado_por) REFERENCES auth_user(id),
+    CONSTRAINT CHK_CajaCierre_Estado CHECK (estado IN ('BORRADOR', 'FINALIZADO'))
 );
+GO
+
+-- Differences tracking by category (for monthly reporting)
+CREATE TABLE dbo.CajaCierreDiferencia (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    cierre_id BIGINT NOT NULL,
+    vendedor_codigo VARCHAR(10) NOT NULL, -- Denormalized for easy reporting
+    category VARCHAR(30) NOT NULL, -- EFECTIVO, TDD, TDC, BIOPAGO, CHEQUE
+    sistema DECIMAL(18,2) NOT NULL DEFAULT 0,
+    manual DECIMAL(18,2) NOT NULL DEFAULT 0,
+    diferencia AS (manual - sistema) PERSISTED,
+    CONSTRAINT FK_Diferencia_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
+);
+GO
+CREATE INDEX IX_CajaDiferencia_Vendedor ON dbo.CajaCierreDiferencia(vendedor_codigo);
 GO
 
 -- Cash (efectivo) breakdown
@@ -80,6 +99,7 @@ CREATE TABLE dbo.CajaCierreTarjeta (
     id BIGINT IDENTITY(1,1) PRIMARY KEY,
     cierre_id BIGINT NOT NULL,
     tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('TDD','TDC','BIOPAGO')),
+    punto_de_venta VARCHAR(60) NOT NULL, -- Terminal / POS ID
     referencia VARCHAR(60) NOT NULL,
     monto DECIMAL(18,2) NOT NULL,
     CONSTRAINT FK_Tarjeta_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
@@ -88,80 +108,28 @@ GO
 CREATE INDEX IX_CajaCierreTarjeta_Cierre ON dbo.CajaCierreTarjeta(cierre_id);
 GO
 
--- Optional: difference tracking (if desired later)
--- CREATE TABLE dbo.CajaCierreDiferencia (
---     id BIGINT IDENTITY(1,1) PRIMARY KEY,
---     cierre_id BIGINT NOT NULL,
---     categoria VARCHAR(30) NOT NULL, -- e.g. EFECTIVO, CHEQUES, TARJETAS, GIROS
---     sistema DECIMAL(18,2) NOT NULL,
---     manual DECIMAL(18,2) NOT NULL,
---     diferencia AS (manual - sistema) PERSISTED,
---     CONSTRAINT FK_Diferencia_Cierre FOREIGN KEY (cierre_id) REFERENCES dbo.CajaCierre(id) ON DELETE CASCADE
--- );
-GO
-
-#### Notes
+## Notes
 - All object names use plain ASCII, no accents, to avoid encoding issues.
 - Consider adding unique index on (cierre_id, referencia) for tarjeta and cheque tables.
 - Add auditing columns (modified_at, modified_by) if needed.
 
-#### Extended Flow (Including Save)
+## Extended Flow (Including Save)
+Ver el flujo gráfico detallado en el archivo: [Flujo_Caja.mmd](file:///c:/source/Cierre%20de%20Caja/Flujo_Caja.mmd)
 
-```mermaid
-flowchart TD
-    A[Start] --> B(Login Screen)
-    B --> C{Enter Credentials}
-    C --> D[Validate]
-    D -->|Invalid| B
-    D -->|Role: Cashier| E[Go to Conciliation]
-    D -->|Role: Admin| F[Conciliation + Admin Button]
-    E --> G[Load Vendors]
-    F --> G
-    G --> H[Select Vendor + Dates]
-    H --> I[Query System Totals]
-    I --> J[Execute Summary SQL]
-    J --> K[Render System Totals]
-    K --> L[Manual Counting]
-    L --> M{Modal Actions}
-    M --> M1[Cash Bills]
-    M --> M2[USD/EUR]
-    M --> M3[TDD Tickets]
-    M --> M4[BIOPAGO]
-    M --> M5[TDC Tickets]
-    M --> M6[Cheques]
-    M1 --> N[Update Manual Totals]
-    M2 --> N
-    M3 --> N
-    M4 --> N
-    M5 --> N
-    M6 --> N
-    N --> O[Calc Differences]
-    O --> P[Realtime Summary]
-    P --> Q{Action}
-    Q -->|Save| R[POST /api/save-closure]
-    Q -->|Clear| L
-    Q -->|Logout| B
-    R --> S[Persist Header + Details]
-    S --> T[Success Message]
-    T --> L
-```
+### Save Sequence
 
-#### Save Sequence
 1. Frontend builds JSON payload.
 2. API validates required fields.
 3. Header created, details inserted.
 4. Returns closure id.
 
-#### Suggested Index Enhancements
+## Suggested Index Enhancements
+
 ```sql
 CREATE UNIQUE INDEX UX_Tarjeta_Cierre_Ref ON dbo.CajaCierreTarjeta(cierre_id, referencia);
 CREATE UNIQUE INDEX UX_Cheque_Cierre_Ref ON dbo.CajaCierreCheque(cierre_id, referencia);
 ```
 
-#### Migration vs Manual DDL
-If using Django migrations against SQL Server:
-```
-python manage.py makemigrations
-python manage.py migrate
-```
-Manual DDL is only needed if schema managed outside Django.
+## Database Initialization
+
+Since the backend is pure FastAPI (Django has been removed from the stack), this schema must be executed directly in SQL Server Management Studio (SSMS) or via a raw `pyodbc` setup script to initialize the application database.

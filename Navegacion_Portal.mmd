@@ -1,0 +1,32 @@
+flowchart TD
+    %% Nodes
+    A(["Inicio de Sesión"])
+    B{"Verificación de Rol"}
+    C["Portal Principal / Menú"]
+    
+    %% Módulos
+    M1[("Módulo: Cuentas por Pagar")]
+    M2[("Módulo: Cuadre de Cajas")]
+    M3[("Futuros Módulos...")]
+
+    %% Relationships
+    A -->|"Ingresa Usuario y Clave"| B
+    B -->|"Usuario Válido"| C
+    B -->|"Credenciales Inválidas"| A
+    
+    C -->|"Click en Menú"| M1
+    C -->|"Click en Menú"| M2
+    C -->|"Click en Menú"| M3
+    
+    M1 -->|"Atrás / Inicio"| C
+    M2 -->|"Atrás / Inicio"| C
+
+    %% Styling Definitions
+    classDef auth fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef menu fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef module fill:#bfb,stroke:#333,stroke-width:2px;
+
+    %% Applying Classes
+    class A auth
+    class C menu
+    class M1,M2,M3 module

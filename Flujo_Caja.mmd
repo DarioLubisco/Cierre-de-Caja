@@ -1,0 +1,39 @@
+flowchart TD
+    START(["Start"]) --> LOGIN("Login Screen")
+    LOGIN --> CRED{"Enter Credentials"}
+    CRED --> VAL["Validate"]
+    VAL -->|"Invalid"| LOGIN
+    VAL -->|"Role: Cashier"| CASHIER["Go to Conciliation"]
+    VAL -->|"Role: Admin"| ADMIN["Conciliation + Admin Button"]
+    CASHIER --> VEND["Load Vendors"]
+    ADMIN --> VEND
+    VEND --> SELECT["Select Vendor + Dates"]
+    SELECT --> QUERY["Query System Totals"]
+    QUERY --> EXEC["Execute Summary SQL"]
+    EXEC --> RENDER["Render System Totals"]
+    RENDER --> COUNT["Manual Counting"]
+    COUNT --> MOD{"Modal Actions"}
+    MOD --> M1["Cash Bills (Denominations)"]
+    MOD --> M2["USD/EUR (Denominations)"]
+    MOD --> M3["TDD Tickets (POS Select)"]
+    MOD --> M4["BIOPAGO"]
+    MOD --> M5["TDC Tickets (POS Select)"]
+    MOD --> M6["Cheques"]
+    M1 --> UPD["Update Manual Totals"]
+    M2 --> UPD
+    M3 --> UPD
+    M4 --> UPD
+    M5 --> UPD
+    M6 --> UPD
+    UPD --> CALC["Calc Differences per Category"]
+    CALC --> SUMM["Realtime Summary"]
+    SUMM --> ACT{"Action"}
+    ACT -->|"Save Draft (Precierre)"| DRAFT["POST /api/save-draft"]
+    ACT -->|"Final Close"| FINAL["POST /api/finalize-closure"]
+    ACT -->|"Clear"| COUNT
+    ACT -->|"Logout"| LOGIN
+    DRAFT --> PERSIST_DRAFT["Update Header (estado=BORRADOR) + Details"]
+    FINAL --> PERSIST_FINAL["Update Header (estado=FINALIZADO) + Details"]
+    PERSIST_DRAFT --> SUCCESS_DRAFT["Draft Saved Message"]
+    PERSIST_FINAL --> SUCCESS_FINAL["Closure Complete Message"]
+    SUCCESS_DRAFT --> COUNT

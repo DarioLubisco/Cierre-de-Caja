@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    actor V as Vendedor
+    participant I as Interfaz Web (Caja)
+    participant A as FastAPI Backend
+    participant B as SQL Server (Saint/App)
+
+    V->>I: "1. Selecciona 'Iniciar Cuadre'"
+    I->>A: "GET /caja/sistema/totales (revisa si hay Precierre)"
+    A->>B: "Ejecuta SELECTs a SAFACT, SATARE..."
+    B-->>A: "Retorna totales del sistema + Billetes/Tickets previamente guardados en Borrador"
+    A-->>I: "Muestra totales a conciliar y pre-llena conteo anterior (si existe)"
+    
+    loop "Ingreso de Soportes Físicos (Tarjetas/Biopago)"
+        V->>I: "2. Selecciona Punto de Venta (Terminal), Referencia y Monto"
+        I->>A: "Validar Referencia"
+        A-->>I: "OK / Error"
+        I->>I: "Acumula montos por Terminal y Categoría"
+    end
+    
+    loop "Conteo de Efectivo por Denominación"
+        V->>I: "3. Ingresa cantidad de billetes (1, 5, 10, 20, 50, 100)"
+        I->>I: "Sumariza efectivo total y por moneda (USD/EUR/BS)"
+    end
+
+    alt "Opción: Guardar Precierre (Borrador)"
+        V->>I: "4a. Presiona 'Guardar Avance (Precierre)'"
+        I->>A: "POST /caja/conciliar/guardar_borrador"
+        A->>B: "Actualiza CajaCierre con estado=BORRADOR"
+        I-->>V: "Aviso: Precierre guardado exitosamente."
+    else "Opción: Cierre Definitivo"
+        V->>I: "4b. Presiona 'Cierre Definitivo'"
+        I->>I: "Calcula Diferencias por Categoría (Sistema vs Manual)"
+        
+        alt "Hay Diferencias Significativas"
+            I-->>V: "Muestra advertencia de sobrante/faltante"
+            V->>I: "Justifica o Revisa (Corrigiendo tickets)"
+        end
+        
+        I->>A: "POST /caja/conciliar/finalizar (JSON con desgloses)"
+        A->>B: "Actualiza Header, Detalles y Tabla de Diferencias (estado=FINALIZADO)"
+        B-->>A: "Confirmación (ID de Cierre)"
+        A-->>I: "Retorna Éxito"
+        I-->>V: "5. Pantalla de Éxito / Imprimir Recibo de Arqueo"
+    end
