@@ -1689,7 +1689,7 @@ async function cargarReporteDolares() {
           tbody.innerHTML += `
             <tr style="border-bottom: 1px solid var(--border-subtle);">
               <td style="font-size:0.75rem; color:var(--text-muted);">${t.id}</td>
-              <td style="white-space:nowrap;">${new Date(t.fecha).toLocaleTimeString('es-VE', {hour:'2-digit', minute:'2-digit'})}</td>
+              <td style="white-space:nowrap;">${new Date(t.fecha).toLocaleString('es-VE', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}</td>
               <td style="font-weight:bold;">${fmtBig(t.factura_bs)}</td>
               <td style="color:var(--success);">${t.rec_ef_usd.toFixed(2)}</td>
               <td style="color:#3b82f6;">${t.rec_on_usd.toFixed(2)}</td>
