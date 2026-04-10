@@ -609,12 +609,18 @@ async def guardar_transaccion(payload: GuardarTransaccionRequest):
         conn.close()
 
 @app.delete("/caja/calculadora/transaccion/{transaccion_id}")
-async def eliminar_transaccion_dolares(transaccion_id: int):
-    """Elimina una transacción del registro histórico de la Calculadora Mixta."""
+async def eliminar_transaccion_dolares(transaccion_id: int, cod_usua: str):
+    """Anula una transacción del registro histórico de la Calculadora Mixta. Requiere permisos Admin."""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute('DELETE FROM Custom.CajaTransaccionesDolares WHERE id = ?', (transaccion_id,))
+        # Check permissions
+        cursor.execute("SELECT Level FROM SSUSRS WHERE CodUsua = ? AND Activo = 1", (cod_usua,))
+        user_db = cursor.fetchone()
+        if not user_db or int(user_db[0] if user_db[0] is not None else 4) > 2:
+            raise HTTPException(status_code=403, detail="Permisos insuficientes. Sólo administradores pueden anular transacciones.")
+
+        cursor.execute("UPDATE Custom.CajaTransaccionesDolares SET anulado = 1, observacion = ISNULL(observacion, '') + ' [ANULADO]' WHERE id = ?", (transaccion_id,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Transacción no encontrada")
         conn.commit()
@@ -663,7 +669,7 @@ async def reporte_dolares(fecha: str | None = None, vendedor_codigo: str | None 
                 ISNULL(SUM(rec_ef_usd + rec_on_usd), 0)
                     - ISNULL(SUM(vuelto_usd), 0)      AS saldo_usd_caja
             FROM Custom.CajaTransaccionesDolares
-            WHERE CAST(fecha AS DATE) = ? {filtro_vend_sql}
+            WHERE CAST(fecha AS DATE) = ? AND anulado = 0 {filtro_vend_sql}
         ''', tuple(params_summary))
         summary_row = cursor.fetchone()
 
@@ -688,7 +694,7 @@ async def reporte_dolares(fecha: str | None = None, vendedor_codigo: str | None 
                 rec_ef_usd, rec_on_usd, rec_ef_bs, rec_pm_bs, rec_bio_bs,
                 total_rec_usd, total_rec_bs,
                 vuelto_usd, vuelto_bs, vuelto_pm_bs, total_vuelto_usd,
-                resultado, diff_usd, diff_bs
+                resultado, diff_usd, diff_bs, anulado
             FROM Custom.CajaTransaccionesDolares
             WHERE CAST(fecha AS DATE) = ? {filtro_vend_sql}
             ORDER BY fecha DESC

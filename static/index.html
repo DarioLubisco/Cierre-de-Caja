@@ -1684,10 +1684,11 @@ async function cargarReporteDolares() {
         data.transacciones.forEach((t, index) => {
           const isVuelto = t.resultado === 'VUELTO';
           const isFalta = t.resultado === 'FALTA';
-          const color = isVuelto ? 'var(--success)' : isFalta ? 'var(--danger)' : 'var(--text-muted)';
+          const color = t.anulado ? 'var(--text-muted)' : (isVuelto ? 'var(--success)' : isFalta ? 'var(--danger)' : 'var(--text-muted)');
+          const rowStyle = t.anulado ? 'text-decoration: line-through; opacity: 0.6;' : '';
           
           tbody.innerHTML += `
-            <tr style="border-bottom: 1px solid var(--border-subtle);">
+            <tr style="border-bottom: 1px solid var(--border-subtle); ${rowStyle}">
               <td style="font-size:0.75rem; color:var(--text-muted);">${t.id}</td>
               <td style="white-space:nowrap;">${new Date(t.fecha).toLocaleString('es-VE', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}</td>
               <td style="font-weight:bold;">${fmtBig(t.factura_bs)}</td>
@@ -1699,10 +1700,14 @@ async function cargarReporteDolares() {
               <td style="color:var(--danger);">${t.vuelto_usd.toFixed(2)}</td>
               <td style="color:var(--danger);">${fmtBig(t.vuelto_bs)}</td>
               <td style="color:var(--danger);">${fmtBig(t.vuelto_pm_bs)}</td>
-              <td style="text-align:center; color:${color}; font-weight:bold; font-size:0.75rem;">${t.resultado}</td>
+              <td style="text-align:center; color:${color}; font-weight:bold; font-size:0.75rem;">${t.anulado ? 'ANULADO' : t.resultado}</td>
               <td style="text-align:center;">
-                  <button class="btn btn-secondary" onclick="eliminarTransaccionCalc(${t.id})" style="padding:0.2rem 0.4rem; color:var(--danger); font-size:0.7rem;" title="Eliminar registro">
-                      <i class="fas fa-trash-alt"></i>
+                  <button class="btn btn-secondary" 
+                          onclick="eliminarTransaccionCalc(${t.id})" 
+                          style="padding:0.2rem 0.4rem; color:${t.anulado ? 'var(--text-muted)' : 'var(--danger)'}; font-size:0.7rem;" 
+                          title="${t.anulado ? 'Ya anulado' : 'Anular registro'}"
+                          ${t.anulado ? 'disabled' : ''}>
+                      <i class="fas ${t.anulado ? 'fa-ban' : 'fa-trash-alt'}"></i>
                   </button>
               </td>
             </tr>
@@ -1724,17 +1729,23 @@ function toggleTablaReporte() {
 }
 
 async function eliminarTransaccionCalc(id) {
-  if(!confirm(`¿Está seguro de ELIMINAR la transacción #${id} del registro?`)) return;
-
-  try {
-    const res = await fetch(`/caja/calculadora/transaccion/${id}`, { method: 'DELETE' });
-    if(!res.ok) throw new Error(await res.text());
-    
-    showToast('Transacción eliminada con éxito', 'success');
-    cargarReporteDolares(); // Refrescar los KPIs automáticamente
-  } catch (e) {
-    showToast('Error al eliminar: ' + e.message, 'danger');
-  }
+    if(!state.currentUser) {
+        showToast('Debes estar autenticado para anular registros.', 'warning');
+        return;
+    }
+    if(!confirm(`¿Está seguro de ANULAR la transacción #${id} del registro?\n\nEsta acción NO se puede deshacer y sólo será permitida si eres Administrador.`)) return;
+  
+    try {
+      const res = await fetch(`/caja/calculadora/transaccion/${id}?cod_usua=${state.currentUser.codigo}`, { 
+          method: 'DELETE' 
+      });
+      if(!res.ok) throw new Error(await res.text());
+      
+      showToast('Transacción anulada con éxito', 'success');
+      cargarReporteDolares(); 
+    } catch (e) {
+      showToast('Error al anular: ' + e.message, 'danger');
+    }
 }
 
 function limpiarCalculadora() {
