@@ -1729,14 +1729,14 @@ function toggleTablaReporte() {
 }
 
 async function eliminarTransaccionCalc(id) {
-    if(!state.currentUser) {
+    if(!state.perfil) {
         showToast('Debes estar autenticado para anular registros.', 'warning');
         return;
     }
     if(!confirm(`¿Está seguro de ANULAR la transacción #${id} del registro?\n\nEsta acción NO se puede deshacer y sólo será permitida si eres Administrador.`)) return;
   
     try {
-      const res = await fetch(`/caja/calculadora/transaccion/${id}?cod_usua=${state.currentUser.codigo}`, { 
+      const res = await fetch(`/caja/calculadora/transaccion/${id}?cod_usua=${state.perfil.cod_usua}`, { 
           method: 'DELETE' 
       });
       if(!res.ok) throw new Error(await res.text());
