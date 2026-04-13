@@ -421,8 +421,8 @@ async def get_perfil_usuario(cod_usua: str):
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "SELECT CodUsua, Descrip, Level, CodVend, Activo FROM SSUSRS WHERE CodUsua = ? AND Activo = 1",
-            (cod_usua,)
+            "SELECT CodUsua, Descrip, Level, CodVend, Activo FROM SSUSRS WHERE (CodUsua = ? OR CodVend = ?) AND Activo = 1",
+            (cod_usua, cod_usua)
         )
         row = cursor.fetchone()
         if not row:
