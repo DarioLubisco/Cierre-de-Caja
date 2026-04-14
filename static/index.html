@@ -230,10 +230,21 @@
   <main class="main-content">
 
     <!-- ── Top Header ── -->
-    <div class="top-header">
+    <div class="top-header" style="display:flex; justify-content:space-between; align-items:center;">
       <div class="header-left">
         <h1 id="module-title">Cuadre de Cajas</h1>
         <p class="subtitle" id="module-subtitle">Selecciona vendedor y fecha para iniciar</p>
+      </div>
+      <div class="header-right" style="display:flex; align-items:center; gap:1rem; background:rgba(0,0,0,0.2); padding:0.5rem 1rem; border-radius:var(--radius-lg); border:1px solid var(--border-subtle);">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <i class="fas fa-coins" style="color:var(--warning);"></i>
+          <span style="color:var(--text-secondary); font-size:0.85rem; text-transform:uppercase; font-weight:600; letter-spacing:0.05em;">Tasa BCV</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:0.3rem;">
+          <span id="calc-tasa-display-bs" style="font-size:1.25rem; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums;">Bs. 0.00</span>
+          <span style="font-size:0.8rem; color:var(--text-muted); font-weight:500;">= $ 1.00</span>
+        </div>
+        <input type="hidden" id="calc-tasa" value="475.01"/>
       </div>
     </div>
 
@@ -507,19 +518,7 @@
     <!-- ── MODULE: Calculadora Mixta ── -->
     <section class="view-section" id="module-calculadora">
 
-      <!-- Barra de tasa (solo lectura) -->
-      <div class="section-card" style="border-left:4px solid var(--primary-accent); padding:1rem 1.5rem; margin-bottom:1.25rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-        <div style="display:flex; align-items:center; gap:0.75rem;">
-          <i class="fas fa-coins" style="color:var(--warning); font-size:1.2rem;"></i>
-          <span style="color:var(--text-secondary); font-size:0.9rem; text-transform:uppercase; letter-spacing:0.05em;">Tasa BCV vigente</span>
-        </div>
-        <div style="display:flex; align-items:baseline; gap:0.5rem;">
-          <span id="calc-tasa-display-bs" style="font-size:2rem; font-weight:800; color:var(--text-primary); font-variant-numeric:tabular-nums;">Bs. 0.00</span>
-          <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">= $ 1.00</span>
-        </div>
-        <input type="hidden" id="calc-tasa" value="475.01"/>
-        <span style="font-size:0.78rem; color:var(--text-muted);"><i class="fas fa-lock"></i> Solo lectura — cargada de BD</span>
-      </div>
+      <!-- Barra de tasa movida al top header -->
 
       <!-- ── Reporte diario de dólares ─────────────────────────────────── -->
       <div id="calc-reporte-usd" class="calc-reporte-bar">
@@ -1010,7 +1009,13 @@ async function loadInitialData() {
         if (datT.tasa) {
             state.tasaDolar = datT.tasa;
             const calcTasaInp = document.getElementById('calc-tasa');
-            if(calcTasaInp) calcTasaInp.value = state.tasaDolar.toFixed(2);
+            if(calcTasaInp) {
+                calcTasaInp.value = state.tasaDolar.toFixed(2);
+            }
+            const calcTasaDisplay = document.getElementById('calc-tasa-display-bs');
+            if(calcTasaDisplay) {
+                calcTasaDisplay.textContent = `Bs. ${state.tasaDolar.toLocaleString('es-VE', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            }
         }
 
         state.vendedores = datV.data;
@@ -1599,7 +1604,7 @@ async function guardarTransaccionCalc() {
   if(diffUsd < -0.005) resultado = 'FALTA';
 
   const payload = {
-    vendedor_codigo: state.perfil?.cod_usua || null,
+    vendedor_codigo: state.perfil?.cod_vend || state.perfil?.cod_usua || null,
     observacion: null,
     tasa_bcv: tasa,
     factura_bs: factBs,
